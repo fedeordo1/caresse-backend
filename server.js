@@ -423,6 +423,7 @@ async function procesar(chatId, texto) {
       const ns = getSesion(chatId);
       ns.nombre = nombre;
       ns.estado = 'eligiendo_categoria';
+      ns.envio = '';
       await send(chatId, 'Que bueno! Que otro pedido queres realizar, <b>'+nombre+'</b>?', mkKb(CAT_BTNS, 2));
     } else {
       await send(chatId, 'Queres hacer otro pedido?', mkKb(['Hacer otro pedido'], 1));
