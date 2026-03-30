@@ -256,19 +256,25 @@ async function procesar(chatId, texto) {
 
   if (texto === '/start') {
     resetSesion(chatId);
-    await send(chatId, 'Hola! Soy <b>Charlene</b>, de <b>Caresse</b>.\n\nEstoy aca para ayudarte con tu pedido. Me podes decir tu nombre?');
+    await send(chatId, 'Hola! Soy <b>Fede</b>, de <b>Caresse</b>.\n\nEstoy aca para ayudarte con tu pedido. Me podes decir tu nombre?');
     getSesion(chatId).estado = 'esperando_nombre';
     return;
   }
 
   if (s.estado === 'inicio' || s.estado === 'esperando_nombre') {
-    let nombre = texto.trim();
-    const m = nombre.match(/(?:me llamo|soy|es|llamo)\s+(\w+)/i);
-    if (m) nombre = m[1];
-    else { const p = nombre.split(/\s+/); nombre = p[p.length-1]; }
-    s.nombre = nombre.charAt(0).toUpperCase()+nombre.slice(1).toLowerCase();
-    s.estado = 'eligiendo_categoria';
-    await send(chatId, 'Bienvenido/a, <b>'+s.nombre+'</b>!\n\nQue categoria te interesa?', mkKb(CAT_BTNS, 2));
+    if (s.nombre && s.nombre !== '') {
+      // Ya tiene nombre, ir directo a categorias
+      s.estado = 'eligiendo_categoria';
+      await send(chatId, 'Que categoria te interesa, <b>'+s.nombre+'</b>?', mkKb(CAT_BTNS, 2));
+    } else {
+      let nombre = texto.trim();
+      const m = nombre.match(/(?:me llamo|soy|es|llamo)\s+(\w+)/i);
+      if (m) nombre = m[1];
+      else { const p = nombre.split(/\s+/); nombre = p[p.length-1]; }
+      s.nombre = nombre.charAt(0).toUpperCase()+nombre.slice(1).toLowerCase();
+      s.estado = 'eligiendo_categoria';
+      await send(chatId, 'Bienvenido/a, <b>'+s.nombre+'</b>!\n\nQue categoria te interesa?', mkKb(CAT_BTNS, 2));
+    }
     return;
   }
 
