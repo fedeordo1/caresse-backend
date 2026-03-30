@@ -97,7 +97,7 @@ async function getSheets() {
       type:'service_account',
       project_id:'sinuous-client-491800-t6',
       private_key_id: process.env.PRIVATE_KEY_ID,
-      private_key: process.env.PRIVATE_KEY.replace(/\\n/g,'\n'),
+      private_key: process.env.PRIVATE_KEY.replace(/\\n/g,'\n').replace(/\\\\n/g,'\n'),
       client_email:'caresse-bot@sinuous-client-491800-t6.iam.gserviceaccount.com',
       token_uri:'https://oauth2.googleapis.com/token'
     },
@@ -389,9 +389,12 @@ async function procesar(chatId, texto) {
 
   if (s.estado === 'finalizado') {
     if (texto === 'Hacer otro pedido') {
+      const nombre = s.nombre;
       resetSesion(chatId);
-      getSesion(chatId).estado = 'esperando_nombre';
-      await send(chatId, 'Empecemos de nuevo! Me dices tu nombre?');
+      const ns = getSesion(chatId);
+      ns.nombre = nombre;
+      ns.estado = 'eligiendo_categoria';
+      await send(chatId, 'Que bueno! Que otro pedido queres realizar, <b>'+nombre+'</b>?', mkKb(CAT_BTNS, 2));
     } else {
       await send(chatId, 'Queres hacer otro pedido?', mkKb(['Hacer otro pedido'], 1));
     }
