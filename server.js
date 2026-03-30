@@ -9,7 +9,7 @@ app.use(express.json());
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const SHEET_ID = '1SXNpF6OQpcYTZ0r8RkfG2NKFtSCbisU3oiwerJ0JWWc';
-const SHEET_NAME = 'Pedidos';
+const SHEET_NAME = 'Hoja 1';
 
 const CAT_BTNS = [
   'Cortinas y Protectores',
