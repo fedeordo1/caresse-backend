@@ -135,7 +135,7 @@ async function guardarSheets(s) {
       requestBody:{values:filas}
     });
     console.log('Pedido guardado:', s.orden);
-  } catch(e) { console.error('Error Sheets:', e.message); }
+  } catch(e) { console.error('Error Sheets completo:', JSON.stringify(e.message), e.stack); }
 }
 
 function resumenOrden(s) {
