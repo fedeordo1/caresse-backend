@@ -173,9 +173,9 @@ async function enviarExcelTelegram(chatId, s) {
       csv += p.prod.cod+',';
       csv += '"'+p.prod._nombre+' - '+p.prod.label+'",';
       csv += p.bultos+',';
-      csv += p.prod.precio+',';
-      csv += p.total+',';
-      csv += (i===0?total:'')+'\n';
+      csv += '"'+fmt(p.prod.precio)+'",';
+      csv += '"'+fmt(p.total)+'",';
+      csv += (i===0?'"'+fmt(total)+'"':'')+'\n';
     });
 
     // Enviar como documento
