@@ -2,22 +2,22 @@ const express = require('express');
 const { google } = require('googleapis');
 const cors = require('cors');
 const https = require('https');
- 
+
 const app = express();
 app.use(cors());
 app.use(express.json());
- 
+
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const SHEET_ID = '1SXNpF6OQpcYTZ0r8RkfG2NKFtSCbisU3oiwerJ0JWWc';
 const SHEET_NAME = 'Pedidos';
- 
+
 const CAT_BTNS = [
   'Cortinas y Protectores',
   'Manteles',
   'Barrales',
   'Ganchos y Alfombras'
 ];
- 
+
 const CATALOGO = {
   'Cortinas y Protectores': {
     tipos: [
@@ -54,17 +54,17 @@ const CATALOGO = {
     ]
   }
 };
- 
+
 const sesiones = {};
 function getSesion(id) {
   if (!sesiones[id]) sesiones[id] = {estado:'inicio',nombre:'',pedido:[],cat:null,tipo:null,mic:null,prod:null,envio:'',orden:''};
   return sesiones[id];
 }
 function resetSesion(id) { delete sesiones[id]; }
- 
+
 function fmt(n) { return '$ ' + n.toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function genOrden() { const d=new Date(); return 'ORD-'+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(Math.floor(Math.random()*9000)+1000); }
- 
+
 function tgReq(method, params) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify(params);
@@ -77,20 +77,20 @@ function tgReq(method, params) {
     req.on('error',reject); req.write(body); req.end();
   });
 }
- 
+
 function send(chatId, text, keyboard) {
   const p = {chat_id:chatId, text:text, parse_mode:'HTML'};
   if (keyboard) p.reply_markup = keyboard;
   return tgReq('sendMessage', p);
 }
- 
+
 function mkKb(btns, cols) {
   cols = cols || 2;
   const rows = [];
   for (let i=0; i<btns.length; i+=cols) rows.push(btns.slice(i,i+cols).map(b=>({text:b})));
   return {keyboard:rows, resize_keyboard:true, one_time_keyboard:true};
 }
- 
+
 async function getSheets() {
   const auth = new google.auth.GoogleAuth({
     credentials: {
@@ -105,7 +105,7 @@ async function getSheets() {
   });
   return google.sheets({version:'v4', auth: await auth.getClient()});
 }
- 
+
 async function inicializarHoja(sheets) {
   const res = await sheets.spreadsheets.values.get({spreadsheetId:SHEET_ID, range:SHEET_NAME+'!A1:J1'});
   if (!res.data.values || res.data.values.length === 0) {
@@ -115,7 +115,7 @@ async function inicializarHoja(sheets) {
     });
   }
 }
- 
+
 async function guardarSheets(s) {
   try {
     const sheets = await getSheets();
@@ -137,7 +137,7 @@ async function guardarSheets(s) {
     console.log('Pedido guardado:', s.orden);
   } catch(e) { console.error('Error Sheets:', e.message); }
 }
- 
+
 function resumenOrden(s) {
   const total = s.pedido.reduce(function(sum,p){return sum+p.total;},0);
   const fecha = new Date().toLocaleDateString('es-AR');
@@ -158,17 +158,80 @@ function resumenOrden(s) {
   msg += '<i>Precios por bulto. No incluyen IVA.</i>';
   return msg;
 }
- 
+
+async function enviarExcelTelegram(chatId, s) {
+  try {
+    const total = s.pedido.reduce(function(sum,p){return sum+p.total;},0);
+    const fecha = new Date().toLocaleDateString('es-AR');
+    // Armar CSV como alternativa simple al Excel
+    let csv = 'N Orden,Fecha,Cliente,Envio,Codigo,Producto,Unidades,Precio x Bulto,Total Linea,Total Pedido\n';
+    s.pedido.forEach(function(p, i) {
+      csv += (i===0?s.orden:'')+',';
+      csv += (i===0?fecha:'')+',';
+      csv += (i===0?s.nombre:'')+',';
+      csv += (i===0?s.envio:'')+',';
+      csv += p.prod.cod+',';
+      csv += '"'+p.prod._nombre+' - '+p.prod.label+'",';
+      csv += p.bultos+',';
+      csv += p.prod.precio+',';
+      csv += p.total+',';
+      csv += (i===0?total:'')+'\n';
+    });
+
+    // Enviar como documento
+    const boundary = '----FormBoundary'+Date.now();
+    const filename = s.orden+'.csv';
+    const fileContent = Buffer.from(csv, 'utf8');
+
+    let body = '';
+    body += '--'+boundary+'\r\n';
+    body += 'Content-Disposition: form-data; name="chat_id"\r\n\r\n';
+    body += chatId+'\r\n';
+    body += '--'+boundary+'\r\n';
+    body += 'Content-Disposition: form-data; name="caption"\r\n\r\n';
+    body += 'Orden de Compra '+s.orden+'\r\n';
+    body += '--'+boundary+'\r\n';
+    body += 'Content-Disposition: form-data; name="document"; filename="'+filename+'"\r\n';
+    body += 'Content-Type: text/csv\r\n\r\n';
+
+    const bodyStart = Buffer.from(body, 'utf8');
+    const bodyEnd = Buffer.from('\r\n--'+boundary+'--\r\n', 'utf8');
+    const fullBody = Buffer.concat([bodyStart, fileContent, bodyEnd]);
+
+    await new Promise(function(resolve, reject) {
+      const req = https.request({
+        hostname: 'api.telegram.org',
+        path: '/bot'+TELEGRAM_TOKEN+'/sendDocument',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'multipart/form-data; boundary='+boundary,
+          'Content-Length': fullBody.length
+        }
+      }, function(res) {
+        let d = '';
+        res.on('data', function(c){d+=c;});
+        res.on('end', function(){resolve(JSON.parse(d));});
+      });
+      req.on('error', reject);
+      req.write(fullBody);
+      req.end();
+    });
+    console.log('CSV enviado por Telegram');
+  } catch(e) {
+    console.error('Error enviando CSV:', e.message);
+  }
+}
+
 async function procesar(chatId, texto) {
   const s = getSesion(chatId);
- 
+
   if (texto === '/start') {
     resetSesion(chatId);
     await send(chatId, 'Hola! Soy <b>Charlene</b>, de <b>Caresse</b>.\n\nEstoy aca para ayudarte con tu pedido. Me podes decir tu nombre?');
     getSesion(chatId).estado = 'esperando_nombre';
     return;
   }
- 
+
   if (s.estado === 'inicio' || s.estado === 'esperando_nombre') {
     let nombre = texto.trim();
     const m = nombre.match(/(?:me llamo|soy|es|llamo)\s+(\w+)/i);
@@ -179,7 +242,7 @@ async function procesar(chatId, texto) {
     await send(chatId, 'Bienvenido/a, <b>'+s.nombre+'</b>!\n\nQue categoria te interesa?', mkKb(CAT_BTNS, 2));
     return;
   }
- 
+
   if (s.estado === 'eligiendo_categoria') {
     if (!CATALOGO[texto]) {
       await send(chatId, 'Por favor elegi una categoria.', mkKb(CAT_BTNS, 2));
@@ -192,7 +255,7 @@ async function procesar(chatId, texto) {
     await send(chatId, 'Elegi el producto de <b>'+texto+'</b>:', mkKb(tipos, 1));
     return;
   }
- 
+
   if (s.estado === 'eligiendo_tipo') {
     if (texto === 'Volver') {
       s.estado = 'eligiendo_categoria';
@@ -221,7 +284,7 @@ async function procesar(chatId, texto) {
     }
     return;
   }
- 
+
   if (s.estado === 'eligiendo_micronaje') {
     if (texto === 'Volver') {
       s.estado = 'eligiendo_tipo';
@@ -239,7 +302,7 @@ async function procesar(chatId, texto) {
     await send(chatId, 'Protector <b>'+mic.label+'</b> - que color queres?', mkKb(cols, 2));
     return;
   }
- 
+
   if (s.estado === 'eligiendo_color') {
     if (texto === 'Volver') {
       s.estado = 'eligiendo_micronaje';
@@ -256,7 +319,7 @@ async function procesar(chatId, texto) {
     await send(chatId, 'Seleccionaste: <b>'+v._nombre+'</b>\n'+v.label+'\n\nPrecio por bulto: <b>'+fmt(v.precio)+'</b> ('+v.uxb+' unidades por bulto)\n\nCuantas unidades queres?');
     return;
   }
- 
+
   if (s.estado === 'eligiendo_variante') {
     if (texto === 'Volver') {
       s.estado = 'eligiendo_tipo';
@@ -273,7 +336,7 @@ async function procesar(chatId, texto) {
     await send(chatId, 'Seleccionaste: <b>'+v._nombre+'</b>\n'+v.label+'\n\nPrecio por bulto: <b>'+fmt(v.precio)+'</b> ('+v.uxb+' unidades por bulto)\n\nCuantas unidades queres?');
     return;
   }
- 
+
   if (s.estado === 'esperando_cantidad') {
     const n = parseInt(texto);
     if (isNaN(n) || n < 1) { await send(chatId, 'Por favor ingresa un numero valido mayor a 0.'); return; }
@@ -284,7 +347,7 @@ async function procesar(chatId, texto) {
       mkKb(['Agregar mas productos','Ver pedido','Confirmar pedido'], 2));
     return;
   }
- 
+
   if (s.estado === 'eligiendo_accion') {
     if (texto === 'Agregar mas productos') {
       s.estado = 'eligiendo_categoria';
@@ -300,15 +363,15 @@ async function procesar(chatId, texto) {
       await send(chatId, '<b>Tu pedido:</b>\n\n'+lines+'\n\n<b>Total: '+fmt(total)+'</b>', mkKb(['Agregar mas','Confirmar pedido'], 2));
     } else if (texto === 'Confirmar pedido') {
       s.estado = 'eligiendo_envio';
-      await send(chatId, 'Como preferis recibir tu pedido?', mkKb(['Correo Argentino','Andreani','Retiro en local'], 1));
+      await send(chatId, 'Como preferis recibir tu pedido?', mkKb(['Envio Caresse','Retiro en local'], 1));
     } else {
       await send(chatId, 'Usa los botones.', mkKb(['Agregar mas productos','Ver pedido','Confirmar pedido'], 2));
     }
     return;
   }
- 
+
   if (s.estado === 'eligiendo_envio') {
-    const envios = ['Correo Argentino','Andreani','Retiro en local'];
+    const envios = ['Envio Caresse','Retiro en local'];
     if (!envios.includes(texto)) {
       await send(chatId, 'Elegi una opcion de envio.', mkKb(envios, 1));
       return;
@@ -317,12 +380,13 @@ async function procesar(chatId, texto) {
     s.orden = genOrden();
     await guardarSheets(s);
     await send(chatId, resumenOrden(s));
+    await enviarExcelTelegram(chatId, s);
     await send(chatId, 'Tu pedido fue generado con exito!\n\nUn asesor de <b>Caresse</b> se va a contactar con vos para confirmar el stock y coordinar la entrega.\n\nGracias por elegirnos!',
       mkKb(['Hacer otro pedido'], 1));
     s.estado = 'finalizado';
     return;
   }
- 
+
   if (s.estado === 'finalizado') {
     if (texto === 'Hacer otro pedido') {
       resetSesion(chatId);
@@ -333,7 +397,7 @@ async function procesar(chatId, texto) {
     }
   }
 }
- 
+
 app.post('/webhook', async function(req, res) {
   res.sendStatus(200);
   try {
@@ -342,13 +406,13 @@ app.post('/webhook', async function(req, res) {
     await procesar(update.message.chat.id, update.message.text || '');
   } catch(e) { console.error('Error:', e.message); }
 });
- 
+
 app.get('/set-webhook', async function(req, res) {
   const url = 'https://'+req.get('host')+'/webhook';
   const result = await tgReq('setWebhook', {url:url});
   res.json(result);
 });
- 
+
 app.post('/pedido', async function(req, res) {
   try {
     const b = req.body;
@@ -366,8 +430,8 @@ app.post('/pedido', async function(req, res) {
     res.json({ok:true});
   } catch(e) { res.status(500).json({ok:false,error:e.message}); }
 });
- 
+
 app.get('/', function(req, res) { res.json({status:'Caresse Bot corriendo OK'}); });
- 
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, function() { console.log('Servidor en puerto '+PORT); });
