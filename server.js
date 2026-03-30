@@ -153,7 +153,7 @@ async function guardarSheets(s) {
     const fecha = new Date().toLocaleDateString('es-AR');
     const filas = s.pedido.map(function(p,i) {
       return [
-        i===0?s.orden:'', i===0?fecha:'', i===0?s.nombre:'', i===0?s.envio:'',
+        i===0?s.orden.slice(-4):'', i===0?fecha:'', i===0?s.nombre:'', i===0?s.envio:'',
         p.prod.cod, p.prod._nombre+' - '+p.prod.label,
         p.bultos, p.prod.precio, p.total, i===0?total:''
       ];
