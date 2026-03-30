@@ -140,7 +140,7 @@ async function inicializarHoja(sheets) {
   if (!res.data.values || res.data.values.length === 0) {
     await sheets.spreadsheets.values.update({
       spreadsheetId:SHEET_ID, range:SHEET_NAME+'!A1', valueInputOption:'RAW',
-      requestBody:{values:[['N Orden','Fecha','Cliente','Envio','Codigo','Producto','Unidades','Precio x Bulto','Total Linea','Total Pedido']]}
+      requestBody:{values:[['N Orden','Fecha','Cliente','Envio','Codigo','Producto','Unidades','Precio x Bulto','Total Linea']]}
     });
   }
 }
@@ -153,9 +153,15 @@ async function guardarSheets(s) {
     const fecha = new Date().toLocaleDateString('es-AR');
     const filas = s.pedido.map(function(p,i) {
       return [
-        i===0?s.orden.slice(-4):'', i===0?fecha:'', i===0?s.nombre:'', i===0?s.envio:'',
-        p.prod.cod, p.prod._nombre+' - '+p.prod.label,
-        p.bultos, p.prod.precio, p.total, i===0?total:''
+        i===0?s.orden.slice(-4):'',
+        i===0?fecha:'',
+        i===0?s.nombre:'',
+        i===0?s.envio:'',
+        p.prod.cod,
+        p.prod._nombre+' - '+p.prod.label,
+        p.bultos,
+        p.prod.precio,
+        p.total
       ];
     });
     await sheets.spreadsheets.values.append({
